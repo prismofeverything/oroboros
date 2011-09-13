@@ -1,6 +1,7 @@
 (ns oroboros.core
   (:use [penumbra opengl])
   (:use oroboros.debug)
+  (:use [clojure.contrib.seq-utils :only [rand-elt]])
   (:require [penumbra.app :as app]
             [overtone.live :as ot]
             [oroboros.sound :as sound]))
@@ -69,8 +70,13 @@
       :segments segments}
      (segment-markers segments (deviate-segment (last segments))))))
 
+(defn make-title []
+  (let [parts ["or" "ob" "or" "os" "OR" "OB" "OR" "OS"]
+        num (+ (rand-int 20) 10)]
+    (apply str (map (fn [_] (rand-elt parts)) (range num)))))
+
 (defn init [state]
-  (app/title! "oroborosOROBOROSOROBOROSOROBOROSOROBOROSOROBOROSoroboros")
+  (app/title! (make-title))
   (app/vsync! true)
   (reset (merge state {:moobs []})))
 
