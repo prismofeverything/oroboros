@@ -3,5 +3,5 @@
 
 ;;(boot :external 57110)
 
-(definst moob [freq 333] (* 0.3 (sin-osc freq)))
+(definst moob [freq 333] (* 0.1 (sin-osc freq)))
 

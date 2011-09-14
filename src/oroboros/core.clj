@@ -1,5 +1,6 @@
 (ns oroboros.core
   (:use [penumbra opengl])
+  (:use cantor)
   (:use oroboros.debug)
   (:use [clojure.contrib.seq-utils :only [rand-elt]])
   (:require [penumbra.app :as app]
@@ -7,7 +8,7 @@
             [oroboros.sound :as sound]))
 
 (def deviation-scale 0.3)
-(def tones-max 9)
+(def tones-max 5)
 
 (defn segment [c v]
   {:color c :vertex v})
@@ -16,10 +17,10 @@
   (+ (rand-int 42) 9))
 
 (defn pick-color []
-  (map (fn [_] (rand)) (range 4)))
+  (apply vec4 (map (fn [_] (rand)) (range 4))))
 
 (defn pick-vertex []
-  (map (fn [_] (- (* (rand) 2) 1)) (range 3)))
+  (apply vec3 (map (fn [_] (- (* (rand) 2) 1)) (range 3))))
 
 (defn random-segment [& _]
   (segment (pick-color) (pick-vertex)))
@@ -28,13 +29,17 @@
   (cons segment (take (- (count segments) 1) segments)))
 
 (defn mix [a b z]
-  (map #(+ (* %1 (- 1 z)) (* %2 z)) a b))
+  (add (mul a (- 1 z)) (mul b z)))
+  ;; (map #(+ (* %1 (- 1 z)) (* %2 z)) a b))
 
 (defn advance-segment [a b z]
   (segment (mix (a :color) (b :color) z) (mix (a :vertex) (b :vertex) z)))
 
+(defn random-deviation [epsilon]
+  (* epsilon (- (* (rand) 2) 1)))
+
 (defn deviate [v epsilon]
-  (doall (map #(+ % (* epsilon (- (* (rand) 2) 1))) v)))
+  (add v (apply vec3 (map (fn [_] (random-deviation epsilon)) (range 3)))))
 
 (defn deviate-segment [s]
   (segment (pick-color) (deviate (s :vertex) deviation-scale)))
@@ -54,10 +59,13 @@
   (sound/moob (+ 200 (* (rand) 500))))
 
 (defn add-moob [moobs]
-  (if (< (count moobs) tones-max)
-    (cons (random-moob) moobs)
-    (do (ot/kill (last moobs))
-        (cons (random-moob) (take (dec (count moobs)) moobs)))))
+  (let [zero (random-moob)
+        final (last moobs)]
+    (if (< (count moobs) tones-max)
+      (cons zero moobs)
+      (let [shifted (cons zero (take (dec (count moobs)) moobs))
+            _ (ot/kill (last moobs))]
+        shifted))))
 
 (defn reset [state]
   (let [segments (make-segments (segment-count))]
@@ -81,7 +89,9 @@
   (reset (merge state {:moobs []})))
 
 (defn reshape [[x y w h] state]
-  ;; (frustum-view 60.0 (/ (double w) h) 1.0 100.0)
+  (frustum-view 60.0 (/ (double w) h) -2.0 2.0)
+  ;; (viewport 1920 1080)
+  (ortho-view -2 2 -2 2 -2 2)
   (merge state {:width w :height h}))
 
 (defn mouse-down [[x y] button state]
@@ -94,14 +104,18 @@
 
 (defn update [[dt t] state]
   (let [progress (/ (state :level) (state :threshold))
-        trans (merge state
+        mid (merge state
          {:rotation (rem (+ (state :rotation) (* dt 10)) 360)
           :level (+ (state :level) dt)
           :leading-segment (advance-segment (state :first-segment)
                                             (state :next-segment) progress)
           :trailing-segment (advance-segment (state :previous-segment)
                                              (state :last-segment) progress)
-          })]
+          })
+        lead (-> mid :leading-segment :vertex)
+        head (-> mid :first-segment :vertex)
+        trans (merge mid
+         {:orientation (normalize (sub lead head))})]
     
     (if (> (trans :level) (trans :threshold))
       (let [segments (shift (trans :next-segment) (trans :segments))]
@@ -114,7 +128,8 @@
   (apply vertex (segment :vertex)))
 
 (defn display [[dt t] state]
-  ;; (rotate (state :rotation) 0 0 0)
+  ;; (apply translate (sub (vec3 0 0 0) ((state :leading-segment) :vertex)))
+  ;; (apply rotate (cons (state :rotation) (state :orientation)))
   (draw-triangle-strip
    (do-segment (state :leading-segment))
    (doall
