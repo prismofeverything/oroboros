@@ -7,14 +7,25 @@
             [overtone.live :as ot]
             [oroboros.sound :as sound]))
 
-(def deviation-scale 0.3)
+(def color-scale 0.05)
+(def vertex-scale 1.0)
+(def deviant-scales [color-scale vertex-scale])
 (def tones-max 5)
+
+(defn vecn
+  "retrieve the appropriate cantor vec function for the given n"
+  [n]
+  (cond
+   (= 2 n) vec2
+   (= 3 n) vec3
+   (= 4 n) vec4))
 
 (defn segment [c v]
   {:color c :vertex v})
 
 (defn segment-count []
-  (* 10 (+ (rand-int 42) 9)))
+;;  (* 4 (+ (rand-int 42) 9)))
+  (* 1 (+ (rand-int 42) 9)))
 
 (defn unitoid [scale]
   (* scale (rand)))
@@ -57,35 +68,45 @@
 (defn deviate
   "given the epsilon, deviate the current vector in an arbitrary direction"
   [v epsilon]
-  (add v (apply vec3 (map orbitoid (repeat 3 epsilon)))))
+  (let [vcount (count v)
+        vecf (vecn vcount)]
+    (add v (apply vecf (map orbitoid (repeat vcount epsilon))))))
 
 (defn deviate-segment
+  "deviate the given segment by a certain proportion"
+  [seg scales]
+  (apply segment (map #(deviate (seg %1) %2) [:color :vertex] scales)))
+
+(defn add-segment
   "modify the given segment by the deviant segment"
-  [seg]
-  (segment (pick-color) (deviate (seg :vertex) deviation-scale)))
+  [seg deviant]
+  (segment (add (seg :color) (deviant :color))
+           (add (seg :vertex) (deviant :vertex))))
 
-;; (defn deviate-segment
-;;   "modify the given segment by the deviant segment"
-;;   [segment deviant]
-;;   (segment (pick-color) (deviate (segment :vertex) deviation-scale)))
+(defn mix-segments
+  "mix the color and vertex of the two segments a and b according to the blend"
+  [a b blend]
+  (segment (add (mul (a :color) (- 1.0 blend)) (mul (b :color) blend))
+           (add (mul (a :vertex) (- 1.0 blend)) (mul (b :vertex) blend))))
 
-(defn segment-markers [segments trailing]
-  {:next-segment (deviate-segment (first segments))
+(defn segment-markers [segments trailing deviant]
+  {:next-segment (add-segment (first segments) deviant)
    :leading-segment (first segments)
    :first-segment (first segments)
    :last-segment (last segments)
    :trailing-segment trailing
-   :previous-segment trailing})
+   :previous-segment trailing
+   :deviant-segment (deviate-segment deviant deviant-scales)})
 
 (defn make-segments
   "build a list of n segments by starting with a random segment,
    then deviating each next from the last a small amount"
-  [n]
-  (reduce
-   (fn [segments _]
-     (cons (deviate-segment (first segments))
-           segments))
-   [(random-segment)]
+  [n deviant]
+  (reduce 
+   (fn [[segments dev] _]
+     [(cons (add-segment (first segments) dev) segments)
+      (deviate-segment dev deviant-scales)])
+   [[(random-segment)] deviant]
    (range (dec n))))
 
 (defn random-moob []
@@ -105,7 +126,8 @@
 (defn reset
   "return the application to a baseline state"
   [state]
-  (let [segments (make-segments (segment-count))]
+  (let [initial-deviant (apply merge (map #(assoc {} %1 (%2 %3)) [:color :vertex] [pick-color pick-vertex] deviant-scales))
+        [segments deviant] (make-segments (segment-count) initial-deviant)]
     (merge
      state
      {:moobs (add-moob (state :moobs))
@@ -116,7 +138,7 @@
       :level 0
       :threshold (unitoid 0.5)
       :segments segments}
-     (segment-markers segments (deviate-segment (last segments))))))
+     (segment-markers segments (add-segment (last segments) deviant) deviant))))
 
 (defn make-title
   "mix the various components of oroboros together to form a modulating chain"
@@ -147,10 +169,15 @@
   (set-largest-display-mode)
   (reset (merge state {:moobs []})))
 
+(defn orthon
+  "set the perspective to a box with all n dimensions"
+  [n]
+  (ortho-view (- n) n (- n) n (- n) n))
+
 (defn reshape [[x y w h] state]
   ;; (viewport 1920 1080)
   ;; (frustum-view 60.0 (/ (double w) h) -10.0 10.0)
-  (ortho-view -3 3 -3 3 -3 3)
+  (orthon 100)
   (merge state {:width w :height h}))
 
 (defn mouse-down [[x y] button state]
@@ -182,7 +209,7 @@
     (if (> (trans :level) (trans :threshold))
       (let [segments (shift [(trans :next-segment)] (trans :segments))]
         (merge trans {:level 0 :segments segments}
-               (segment-markers segments (trans :last-segment))))
+               (segment-markers segments (trans :last-segment) (trans :deviant-segment)) deviant-scales))
       trans)))
 
 (defn do-segment [segment]
@@ -193,8 +220,9 @@
   ;; (apply translate (sub (vec3 0 0 0) ((state :leading-segment) :vertex)))
   ;; (apply rotate (cons (state :rotation) (state :orientation)))
   ;; (apply rotate (cons (state :rotation) (state :orientation)))
-  (apply rotate (state :theta))
-  (draw-polygon
+  ;; (apply rotate (state :theta))
+  (draw-triangle-fan
+   ;; (do-segment (segment (vec4 0 0 0 0) (vec3 0 0 0)))
    (do-segment (state :trailing-segment))
    (doall (map do-segment (reverse (state :segments))))
    (do-segment (state :leading-segment)))
