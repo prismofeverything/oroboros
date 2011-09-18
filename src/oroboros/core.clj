@@ -61,8 +61,8 @@
 
 (defn deviate-segment
   "modify the given segment by the deviant segment"
-  [segment]
-  (segment (pick-color) (deviate (segment :vertex) deviation-scale)))
+  [seg]
+  (segment (pick-color) (deviate (seg :vertex) deviation-scale)))
 
 ;; (defn deviate-segment
 ;;   "modify the given segment by the deviant segment"
@@ -150,8 +150,7 @@
 (defn reshape [[x y w h] state]
   ;; (viewport 1920 1080)
   ;; (frustum-view 60.0 (/ (double w) h) -10.0 10.0)
-  (debug (app/display-modes))
-  (ortho-view -2 2 -2 2 -2 2)
+  (ortho-view -3 3 -3 3 -3 3)
   (merge state {:width w :height h}))
 
 (defn mouse-down [[x y] button state]
@@ -199,10 +198,6 @@
    (do-segment (state :trailing-segment))
    (doall (map do-segment (reverse (state :segments))))
    (do-segment (state :leading-segment)))
-   ;;(do-segment {:vertex (vec3 0 0 0) :color (vec4 0 0 0 0)})
-   ;; (do-segment (state :leading-segment))
-   ;; (doall (map do-segment (state :segments)))
-   ;; (do-segment (state :trailing-segment)))
   (app/repaint!))
 
 (defn close [state]
