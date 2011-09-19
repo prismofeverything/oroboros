@@ -10,6 +10,7 @@
 (def color-scale 0.05)
 (def vertex-scale 1.0)
 (def deviant-scales [color-scale vertex-scale])
+(def closing-factor 0.3)
 (def tones-max 5)
 
 (defn vecn
@@ -90,13 +91,19 @@
            (add (mul (a :vertex) (- 1.0 blend)) (mul (b :vertex) blend))))
 
 (defn segment-markers [segments trailing deviant]
-  {:next-segment (add-segment (first segments) deviant)
-   :leading-segment (first segments)
-   :first-segment (first segments)
-   :last-segment (last segments)
-   :trailing-segment trailing
-   :previous-segment trailing
-   :deviant-segment (deviate-segment deviant deviant-scales)})
+  (let [next-segment (add-segment (first segments) deviant)
+        last-segment (last segments)
+        deviant-segment (deviate-segment deviant deviant-scales)
+        cycle-segment (segment (last-segment :color)
+                               (sub (last-segment :vertex) (next-segment :vertex)))
+        closing-segment (mix-segments deviant-segment cycle-segment closing-factor)]
+    {:next-segment next-segment
+     :leading-segment (first segments)
+     :first-segment (first segments)
+     :last-segment last-segment
+     :trailing-segment trailing
+     :previous-segment trailing
+     :deviant-segment closing-segment}))
 
 (defn make-segments
   "build a list of n segments by starting with a random segment,
@@ -217,11 +224,11 @@
   (apply vertex (segment :vertex)))
 
 (defn display [[dt t] state]
-  ;; (apply translate (sub (vec3 0 0 0) ((state :leading-segment) :vertex)))
+  (apply rotate (state :theta))
+  (apply translate (sub (vec3 0 0 0) ((state :leading-segment) :vertex)))
   ;; (apply rotate (cons (state :rotation) (state :orientation)))
   ;; (apply rotate (cons (state :rotation) (state :orientation)))
-  ;; (apply rotate (state :theta))
-  (draw-triangle-fan
+  (draw-triangle-strip
    ;; (do-segment (segment (vec4 0 0 0 0) (vec3 0 0 0)))
    (do-segment (state :trailing-segment))
    (doall (map do-segment (reverse (state :segments))))
