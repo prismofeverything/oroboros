@@ -11,6 +11,7 @@
 (def vertex-scale 1.0)
 (def deviant-scales [color-scale vertex-scale])
 (def closing-factor 0.3)
+(def threshold 0.1)
 (def tones-max 5)
 
 (defn vecn
@@ -25,8 +26,8 @@
   {:color c :vertex v})
 
 (defn segment-count []
-;;  (* 4 (+ (rand-int 42) 9)))
-  (* 1 (+ (rand-int 42) 9)))
+  (* 4 (+ (rand-int 42) 9)))
+;;  (* 1 (+ (rand-int 42) 9)))
 
 (defn unitoid [scale]
   (* scale (rand)))
@@ -81,7 +82,7 @@
 (defn add-segment
   "modify the given segment by the deviant segment"
   [seg deviant]
-  (segment (add (seg :color) (deviant :color))
+  (segment (pick-color) ;; (add (seg :color) (deviant :color))
            (add (seg :vertex) (deviant :vertex))))
 
 (defn mix-segments
@@ -94,8 +95,9 @@
   (let [next-segment (add-segment (first segments) deviant)
         last-segment (last segments)
         deviant-segment (deviate-segment deviant deviant-scales)
-        cycle-segment (segment (last-segment :color)
-                               (sub (last-segment :vertex) (next-segment :vertex)))
+        deviant-force (length (deviant-segment :vertex))
+        cycle-vertex (normalize (sub (last-segment :vertex) (next-segment :vertex)))
+        cycle-segment (segment (last-segment :color) (mul cycle-vertex deviant-force))
         closing-segment (mix-segments deviant-segment cycle-segment closing-factor)]
     {:next-segment next-segment
      :leading-segment (first segments)
@@ -143,7 +145,7 @@
       :theta (vec4 0 0 0 0)
       :dtheta (pick-rotation 20)
       :level 0
-      :threshold (unitoid 0.5)
+      :threshold (unitoid threshold)
       :segments segments}
      (segment-markers segments (add-segment (last segments) deviant) deviant))))
 
@@ -224,11 +226,11 @@
   (apply vertex (segment :vertex)))
 
 (defn display [[dt t] state]
-  (apply rotate (state :theta))
+  ;; (apply rotate (state :theta))
   (apply translate (sub (vec3 0 0 0) ((state :leading-segment) :vertex)))
   ;; (apply rotate (cons (state :rotation) (state :orientation)))
   ;; (apply rotate (cons (state :rotation) (state :orientation)))
-  (draw-triangle-strip
+  (draw-triangle-fan
    ;; (do-segment (segment (vec4 0 0 0 0) (vec3 0 0 0)))
    (do-segment (state :trailing-segment))
    (doall (map do-segment (reverse (state :segments))))
