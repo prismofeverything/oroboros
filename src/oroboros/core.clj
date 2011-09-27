@@ -2,7 +2,7 @@
   (:use [penumbra opengl])
   (:use oroboros.debug)
   (:use [clojure.contrib.seq-utils :only [rand-elt]])
-  (:require [incanter.core :as incant]
+  (:require [incanter.core :as math]
             [penumbra.app :as app]
             [overtone.live :as ot]
             [oroboros.sound :as sound]))
@@ -12,14 +12,16 @@
 (def deviant-scales [color-scale vertex-scale])
 (def transform-scale 0.1)
 (def closing-factor 0.2)
-(def threshold 0.05)
+(def threshold 0.01)
 (def tones-max 5)
+(def transform-rate 0.1)
+(def identity-rate 0.01)
 
 (defn magnitude [v]
-  (incant/sqrt (incant/sum-of-squares v)))
+  (math/sqrt (math/sum-of-squares v)))
 
 (defn normalize [v]
-  (incant/div v (magnitude v)))
+  (math/div v (magnitude v)))
 
 (defn segment [c v]
   {:color c :vertex v})
@@ -36,26 +38,27 @@
   
 (defn random-matrix
   ([f] (random-matrix f 1.0))
-  ([f scale] (incant/matrix (map f (repeat 9 scale)) 3)))
+  ([f scale] (math/matrix (map f (repeat 9 scale)) 3)))
 
 (defn pick-color
   ([] (pick-color 1.0))
-  ([scale] (incant/matrix (map unitoid (repeat 3 scale)))))
+  ([scale] (math/matrix (map unitoid (repeat 3 scale)))))
 
 (defn pick-vertex
   ([] (pick-vertex 1.0))
-  ([scale] (incant/matrix (map orbitoid (repeat 3 scale)))))
+  ([scale] (math/matrix (map orbitoid (repeat 3 scale)))))
 
 (defn pick-rotation
   ([] (pick-rotation 1.0))
-  ([scale] (incant/matrix (map orbitoid (repeat 4 scale)))))
+  ([scale] (math/matrix (map orbitoid (repeat 4 scale)))))
 
 (defn pick-color-transform
   ([] (pick-color-transform 1.0))
   ([scale]
-     (let [id (incant/identity-matrix 3)
+     (let [id (math/identity-matrix 3)
            deviant (random-matrix orbitoid transform-scale)]
-       (incant/plus id deviant))))
+;;       (math/matrix (normalize (math/vectorize (math/plus id deviant))) 3))))
+       (math/plus id deviant))))
 
 (defn random-segment [& _]
   (segment (pick-color) (pick-vertex)))
@@ -69,7 +72,7 @@
 (defn mix
   "mixes in the proportion of each vector a and b by the given blend between 0 and 1"
   [a b blend]
-  (incant/plus (incant/mult a (- 1 blend)) (incant/mult b blend)))
+  (math/plus (math/mult a (- 1 blend)) (math/mult b blend)))
 
 (defn advance-segment
   "mix between one segment and the next based on the blend (between 0 and 1)"
@@ -81,26 +84,26 @@
   "given the epsilon, deviate the current vector in an arbitrary direction"
   [v epsilon]
   (let [vcount (count v)]
-    (incant/plus v (incant/matrix (map orbitoid (repeat vcount epsilon))))))
+    (math/plus v (math/matrix (map orbitoid (repeat vcount epsilon))))))
 
 (defn deviate-segment
   "deviate the given segment by a certain proportion"
   [seg scales transform]
-  (segment (incant/mmult transform (seg :color))
+  (segment (math/mult 0.5 (math/plus 1 (math/mmult transform (math/minus (math/mult 2 (seg :color)) 1))))
            (deviate (seg :vertex) (last scales))))
 ;;  (apply segment (map #(deviate (seg %1) %2) [:color :vertex] scales)))
 
 (defn add-segment
   "modify the given segment by the deviant segment"
   [seg deviant]
-  (segment (mix (seg :color) (deviant :color) 0.2) ;; (seg :color) ;; (pick-color) ;; (add (seg :color) (deviant :color))
-           (incant/plus (seg :vertex) (deviant :vertex))))
+  (segment (deviant :color) ;; (mix (seg :color) (deviant :color) 0.1) ;; (seg :color) ;; (pick-color) ;; (add (seg :color) (deviant :color))
+           (math/plus (seg :vertex) (deviant :vertex))))
 
 (defn mix-segments
   "mix the color and vertex of the two segments a and b according to the blend"
   [a b blend]
-  (segment (incant/plus (incant/mult (a :color) (- 1.0 blend)) (incant/mult (b :color) blend))
-           (incant/plus (incant/mult (a :vertex) (- 1.0 blend)) (incant/mult (b :vertex) blend))))
+  (segment (normalize (math/plus (math/mult (a :color) (- 1.0 blend)) (math/mult (b :color) blend)))
+           (math/plus (math/mult (a :vertex) (- 1.0 blend)) (math/mult (b :vertex) blend))))
 
 (defn segment-markers
   "compose the structure of notable segments, mainly the head, tail, leading and trailing segments"
@@ -109,12 +112,28 @@
         last-segment (last segments)
         deviant-segment (deviate-segment deviant deviant-scales color-transform)
         deviant-force (magnitude (deviant-segment :vertex))
-        cycle-vertex (normalize (incant/minus (last-segment :vertex) (next-segment :vertex)))
-        cycle-segment (segment (last-segment :color) (incant/mult cycle-vertex deviant-force))
+        cycle-vertex (normalize (math/minus (last-segment :vertex) (next-segment :vertex)))
+        cycle-segment (segment (last-segment :color) (math/mult cycle-vertex deviant-force))
         closing-segment (mix-segments deviant-segment cycle-segment closing-factor)
         ;; color-force (- 1.5 (length (next-segment :color)))
-;;        deviant-transform (mat/add-matrices color-transform (random-matrix unitoid (* color-force 0.1)))]
-        deviant-transform (incant/plus color-transform (random-matrix orbitoid 0.1))]
+
+        deviant-transform (mix (math/plus color-transform (random-matrix orbitoid transform-rate))
+                               (math/identity-matrix 3)
+                               identity-rate)]
+
+        ;; deviant-transform (mix (mix color-transform (pick-color-transform transform-rate) transform-rate)
+        ;;                        (math/identity-matrix 3)
+        ;;                        identity-rate)]
+
+        ;; deviant-transform (math/matrix
+        ;;                    (normalize
+        ;;                     (math/vectorize
+        ;;                      (mix (math/plus
+        ;;                            color-transform
+        ;;                            ;; (pick-color-transform transform-rate)))) 3)]
+        ;;                            (random-matrix orbitoid transform-rate))
+        ;;                           (math/identity-matrix 3)
+        ;;                           identity-rate))) 3)]
     {:next-segment next-segment
      :leading-segment (first segments)
      :first-segment (first segments)
@@ -159,7 +178,7 @@
                             [:color :vertex]
                             [pick-color pick-vertex]
                             deviant-scales))
-        color-transform (pick-color-transform 0.1)
+        color-transform (pick-color-transform transform-rate)
         segments [(random-segment)]]
 ;;        [segments deviant color-transform] (make-segments segment-count initial-deviant transform)]
     (merge
@@ -171,7 +190,7 @@
       :rotation-axis (normalize (pick-vertex))
       :center-color (pick-color)
       :color-transform color-transform
-      :theta (incant/matrix [0 0 0 0])
+      :theta (math/matrix [0 0 0 0])
       :dtheta (pick-rotation 50)
       :level 0
       :threshold (unitoid threshold)
@@ -233,7 +252,7 @@
         growing? (< (count (state :segments)) (state :segment-count))
         mid (merge state
          {:rotation (rem (+ (state :rotation) (* dt 10)) 360)
-          :theta (incant/plus (state :theta) (incant/mult (state :dtheta) dt))
+          :theta (math/plus (state :theta) (math/mult (state :dtheta) dt))
           :level (+ (state :level) dt)
           :leading-segment (advance-segment
                             (state :first-segment)
@@ -247,7 +266,7 @@
                                progress))})
         lead (-> mid :leading-segment :vertex)
         head (-> mid :first-segment :vertex)
-        orientation (normalize (incant/minus lead head))
+        orientation (normalize (math/minus lead head))
         trans (merge mid
          {:orientation orientation :normal -1})] ;; normal??
     
@@ -271,7 +290,7 @@
 (defn display [[dt t] state]
   ;; (apply rotate (state :theta))
   (apply rotate (cons (state :rotation) (state :rotation-axis)))
-  ;; (apply translate (incant/minus (vec3 0 0 0) ((state :leading-segment) :vertex)))
+  ;; (apply translate (math/minus (vec3 0 0 0) ((state :leading-segment) :vertex)))
   ;; (apply rotate (apply vec4 (cons 0 (state :normal))))
   ;; (apply rotate (cons (state :rotation) (state :orientation)))
   (draw-triangle-strip
