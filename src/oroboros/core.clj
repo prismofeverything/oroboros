@@ -12,10 +12,15 @@
 (def deviant-scales [color-scale vertex-scale])
 (def transform-scale 0.1)
 (def closing-factor 0.2)
-(def threshold 0.01)
+(def threshold 0.02)
 (def tones-max 5)
 (def transform-rate 0.1)
 (def identity-rate 0.01)
+(def rotation-rate 50)
+(def homeward 0.05)
+
+(def zero (math/matrix [0 0 0]))
+(def iii (math/identity-matrix 3))
 
 (defn magnitude [v]
   (math/sqrt (math/sum-of-squares v)))
@@ -27,8 +32,7 @@
   {:color c :vertex v})
 
 (defn pick-segment-count []
-  (* 4 (+ (rand-int 42) 9)))
-;;  (* 1 (+ (rand-int 42) 9)))
+  (* 10 (+ (rand-int 42) 9)))
 
 (defn unitoid [scale]
   (* scale (rand)))
@@ -55,10 +59,8 @@
 (defn pick-color-transform
   ([] (pick-color-transform 1.0))
   ([scale]
-     (let [id (math/identity-matrix 3)
-           deviant (random-matrix orbitoid transform-scale)]
-;;       (math/matrix (normalize (math/vectorize (math/plus id deviant))) 3))))
-       (math/plus id deviant))))
+     (let [deviant (random-matrix orbitoid transform-scale)]
+       (math/plus iii deviant))))
 
 (defn random-segment [& _]
   (segment (pick-color) (pick-vertex)))
@@ -91,13 +93,12 @@
   [seg scales transform]
   (segment (math/mult 0.5 (math/plus 1 (math/mmult transform (math/minus (math/mult 2 (seg :color)) 1))))
            (deviate (seg :vertex) (last scales))))
-;;  (apply segment (map #(deviate (seg %1) %2) [:color :vertex] scales)))
 
 (defn add-segment
   "modify the given segment by the deviant segment"
   [seg deviant]
-  (segment (deviant :color) ;; (mix (seg :color) (deviant :color) 0.1) ;; (seg :color) ;; (pick-color) ;; (add (seg :color) (deviant :color))
-           (math/plus (seg :vertex) (deviant :vertex))))
+  (segment (mix (seg :color) (deviant :color) 0.1) ;; (deviant :color) ;; (seg :color) ;; (pick-color) ;; (add (seg :color) (deviant :color))
+           (mix (math/plus (seg :vertex) (deviant :vertex)) zero homeward)))
 
 (defn mix-segments
   "mix the color and vertex of the two segments a and b according to the blend"
@@ -118,11 +119,11 @@
         ;; color-force (- 1.5 (length (next-segment :color)))
 
         deviant-transform (mix (math/plus color-transform (random-matrix orbitoid transform-rate))
-                               (math/identity-matrix 3)
+                               iii
                                identity-rate)]
 
         ;; deviant-transform (mix (mix color-transform (pick-color-transform transform-rate) transform-rate)
-        ;;                        (math/identity-matrix 3)
+        ;;                        iii
         ;;                        identity-rate)]
 
         ;; deviant-transform (math/matrix
@@ -132,7 +133,7 @@
         ;;                            color-transform
         ;;                            ;; (pick-color-transform transform-rate)))) 3)]
         ;;                            (random-matrix orbitoid transform-rate))
-        ;;                           (math/identity-matrix 3)
+        ;;                           iii
         ;;                           identity-rate))) 3)]
     {:next-segment next-segment
      :leading-segment (first segments)
@@ -191,7 +192,7 @@
       :center-color (pick-color)
       :color-transform color-transform
       :theta (math/matrix [0 0 0 0])
-      :dtheta (pick-rotation 50)
+      :dtheta (pick-rotation 90)
       :level 0
       :threshold (unitoid threshold)
       :segments segments}
@@ -251,7 +252,7 @@
   (let [progress (/ (state :level) (state :threshold))
         growing? (< (count (state :segments)) (state :segment-count))
         mid (merge state
-         {:rotation (rem (+ (state :rotation) (* dt 10)) 360)
+         {:rotation (rem (+ (state :rotation) (* dt rotation-rate)) 360)
           :theta (math/plus (state :theta) (math/mult (state :dtheta) dt))
           :level (+ (state :level) dt)
           :leading-segment (advance-segment
@@ -294,7 +295,7 @@
   ;; (apply rotate (apply vec4 (cons 0 (state :normal))))
   ;; (apply rotate (cons (state :rotation) (state :orientation)))
   (draw-triangle-strip
-;;   (do-segment (segment (state :center-color) (vec3 0 0 0)))
+   ;; (do-segment (segment (state :center-color) zero))
    (do-segment (state :trailing-segment))
    (doall (map do-segment (reverse (state :segments))))
    (do-segment (state :leading-segment)))
