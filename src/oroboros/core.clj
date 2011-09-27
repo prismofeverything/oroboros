@@ -13,7 +13,7 @@
 (def deviant-scales [color-scale vertex-scale])
 (def transform-scale 0.1)
 (def closing-factor 0.2)
-(def threshold 0.2)
+(def threshold 0.05)
 (def tones-max 5)
 
 (defn vecn
@@ -279,8 +279,8 @@
   ;; (apply translate (sub (vec3 0 0 0) ((state :leading-segment) :vertex)))
   ;; (apply rotate (apply vec4 (cons 0 (state :normal))))
   ;; (apply rotate (cons (state :rotation) (state :orientation)))
-  (draw-polygon
-   (do-segment (segment (state :center-color) (vec3 0 0 0)))
+  (draw-triangle-strip
+;;   (do-segment (segment (state :center-color) (vec3 0 0 0)))
    (do-segment (state :trailing-segment))
    (doall (map do-segment (reverse (state :segments))))
    (do-segment (state :leading-segment)))
