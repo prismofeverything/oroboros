@@ -16,8 +16,11 @@
 (def tones-max 5)
 (def transform-rate 0.1)
 (def identity-rate 0.01)
-(def rotation-rate 50)
+(def rotation-rate 10)
 (def homeward 0.05)
+(def fft-scale (/ 1.0 sound/fft-window))
+(def fft-index (range -1 1 (* 2 fft-scale)))
+(def bin-window 512)
 
 (def zero (math/matrix [0 0 0]))
 (def iii (math/identity-matrix 3))
@@ -116,7 +119,6 @@
         cycle-vertex (normalize (math/minus (last-segment :vertex) (next-segment :vertex)))
         cycle-segment (segment (last-segment :color) (math/mult cycle-vertex deviant-force))
         closing-segment (mix-segments deviant-segment cycle-segment closing-factor)
-        ;; color-force (- 1.5 (length (next-segment :color)))
 
         deviant-transform (mix (math/plus color-transform (random-matrix orbitoid transform-rate))
                                iii
@@ -184,7 +186,7 @@
 ;;        [segments deviant color-transform] (make-segments segment-count initial-deviant transform)]
     (merge
      state
-     {:moobs (add-moob (state :moobs))
+     {:moobs [];;(add-moob (state :moobs))
       :fullscreen false
       :segment-count segment-count
       :rotation 0
@@ -195,7 +197,8 @@
       :dtheta (pick-rotation 90)
       :level 0
       :threshold (unitoid threshold)
-      :segments segments}
+      :segments segments
+      :frequencies (ot/buffer-data sound/fft-in)}
      (segment-markers segments (add-segment (last segments) deviant) deviant color-transform))))
 
 (defn make-title
@@ -225,6 +228,7 @@
   (app/title! (make-title))
   (app/vsync! true)
   (set-largest-display-mode)
+  (sound/input-frequencies)
   (reset (merge state {:moobs []})))
 
 (defn orthon
@@ -238,8 +242,8 @@
   (orthon 20)
   (merge state {:width w :height h}))
 
-(defn mouse-down [[x y] button state]
-  (update-in state [:moobs] add-moob))
+;; (defn mouse-down [[x y] button state]
+;;   (update-in state [:moobs] add-moob))
 
 (defn key-press [key state]
   (cond
@@ -248,13 +252,26 @@
                        (update-in state [:fullscreen] not))
    :else state))
 
+(defn merge-ranges [s win]
+  (let [pos (map math/abs s)
+        lows (take 10 (drop 2 pos))
+        mids (take 200 (drop 12 pos))
+        highs (take 500 (drop 212 pos))
+        ;; mids (take 70 (drop 12 pos))
+        ;; highs (take 200 (drop 82 pos))
+        sums (map #(* %2 (apply + %1)) [lows mids highs] [0.009 0.005 0.01])]
+    (doall sums)))
+
 (defn update [[dt t] state]
   (let [progress (/ (state :level) (state :threshold))
         growing? (< (count (state :segments)) (state :segment-count))
+        frequencies (ot/buffer-data sound/fft-in)
         mid (merge state
          {:rotation (rem (+ (state :rotation) (* dt rotation-rate)) 360)
           :theta (math/plus (state :theta) (math/mult (state :dtheta) dt))
           :level (+ (state :level) dt)
+          :frequencies frequencies
+          :bins (merge-ranges frequencies bin-window)
           :leading-segment (advance-segment
                             (state :first-segment)
                             (state :next-segment)
@@ -289,16 +306,29 @@
   (apply vertex (segment :vertex)))
 
 (defn display [[dt t] state]
+  ;; (apply rotate (cons (state :rotation) (state :rotation-axis)))
+
   ;; (apply rotate (state :theta))
-  (apply rotate (cons (state :rotation) (state :rotation-axis)))
-  ;; (apply translate (math/minus (vec3 0 0 0) ((state :leading-segment) :vertex)))
+  ;; (apply translate (math/minus (math/matrix [0 0 0]) ((state :leading-segment) :vertex)))
   ;; (apply rotate (apply vec4 (cons 0 (state :normal))))
   ;; (apply rotate (cons (state :rotation) (state :orientation)))
-  (draw-triangle-strip
-   ;; (do-segment (segment (state :center-color) zero))
-   (do-segment (state :trailing-segment))
-   (doall (map do-segment (reverse (state :segments))))
-   (do-segment (state :leading-segment)))
+
+  (draw-triangle-fan
+   (let [bands (count (state :bins))]
+     (color 0.9 0.5 0.3)
+     (vertex 0 0 0)
+     (doall (map #(vertex %1 (* 10 %2) 0) (range bands) (state :bins)))
+     (vertex (dec bands) 0 0)))
+   ;; (doseq [index (range (count (state :bins)))
+   ;;         freq (state :bins)]
+   ;;   (vertex (debug index) (debug (* 10 freq)) 0)))
+
+  ;; (draw-triangle-strip
+  ;; ;; (draw-polygon
+  ;; ;;  (do-segment (segment (state :center-color) zero))
+  ;;  (do-segment (state :trailing-segment))
+  ;;  (doall (map do-segment (reverse (state :segments))))
+  ;;  (do-segment (state :leading-segment)))
   (app/repaint!))
 
 (defn close [state]
