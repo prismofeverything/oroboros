@@ -1,9 +1,13 @@
 (ns oroboros.core
-  (:use [penumbra opengl])
+  (:use [penumbra opengl compute]
+        [penumbra.opengl core])
   (:use oroboros.debug)
   (:use [clojure.contrib.seq-utils :only [rand-elt]])
-  (:require [incanter.core :as math]
+  (:require cantor
+            [incanter.core :as math]
             [penumbra.app :as app]
+            [penumbra.data :as data]
+            [penumbra.opengl.shader :as shader]
             [overtone.live :as ot]
             [oroboros.sound :as sound]))
 
@@ -172,6 +176,70 @@
             _ (ot/kill (last moobs))]
         shifted))))
 
+(defn make-shader []
+  (shader/compile-source
+
+   :vertex
+   "
+   varying vec4 color;
+
+   void main()
+   {
+     color = gl_Color;
+     gl_Position = gl_ModelViewProjectionMatrix * gl_Vertex;
+   } "
+
+   :fragment
+   "
+   //uniform vec2 dim;
+
+   uniform float lo;
+   uniform float mid;
+   uniform float hi;
+
+   uniform vec3 lopos;
+   uniform vec3 midpos;
+   uniform vec3 hipos;
+
+   varying vec4 color;
+
+   void main()
+   {
+     vec3 frag = vec3(gl_FragCoord.xy, 0);
+     vec3 llopos = (lopos + 1.0) * vec3(1800, 1000, 1);
+     vec3 mmidpos = (midpos + 1.0) * vec3(1800, 1000, 1);
+     vec3 hhipos = (hipos + 1.0) * vec3(1800, 1000, 1);
+     float loradius = (0.01 / lo) * sqrt(dot(frag - llopos, frag - llopos));
+     float midradius = (0.01 / mid) * sqrt(dot(frag - mmidpos, frag - mmidpos));
+     float hiradius = (0.01 / hi) * sqrt(dot(frag - hhipos, frag - hhipos));
+     float portion = loradius + midradius + hiradius;
+     float loportion = loradius / portion;
+     float midportion = midradius / portion;
+     float hiportion = hiradius / portion;
+     float intensity = 1.0 / loradius + 1.0 / midradius + 1.0 / hiradius;
+     intensity = clamp(intensity, 0.0, 0.7);
+     float blend = intensity * (loportion + midportion + hiportion);
+
+     gl_FragColor = vec4(blend, blend, blend, 1);
+   } "
+
+   ))
+
+   ;; uniform vec3 locolor;
+   ;; uniform vec3 midcolor;
+   ;; uniform vec3 hicolor;
+
+
+(defn merge-ranges [s win]
+  (let [pos (map math/abs s)
+        lows (take 10 (drop 2 pos))
+        mids (take 150 (drop 12 pos))
+        highs (take 350 (drop 162 pos))
+        ;; mids (take 70 (drop 12 pos))
+        ;; highs (take 200 (drop 82 pos))
+        sums (map #(* %2 (apply + %1)) [lows mids highs] [0.009 0.002 0.01])]
+    (doall sums)))
+
 (defn reset
   "return the application to a baseline state"
   [state]
@@ -196,6 +264,7 @@
       :theta (math/matrix [0 0 0 0])
       :dtheta (pick-rotation 90)
       :level 0
+      :shader (make-shader)
       :threshold (unitoid threshold)
       :segments segments
       :frequencies (ot/buffer-data sound/fft-in)}
@@ -229,6 +298,16 @@
   (app/vsync! true)
   (set-largest-display-mode)
   (sound/input-frequencies)
+  ;; (defpipeline animal
+  ;;   :vertex {position  (float3 :vertex)
+  ;;            now_color (float3 :color)
+  ;;            normal    (normalize (float3 (* :normal-matrix :normal)))
+  ;;            :position (* :model-view-projection-matrix :vertex)}
+  ;;   :fragment (float4 1 1 1 1)
+
+  ;;   )
+
+  (debug (shaders-supported?))
   (reset (merge state {:moobs []})))
 
 (defn orthon
@@ -242,7 +321,7 @@
   (orthon 20)
   (merge state {:width w :height h}))
 
-;; (defn mouse-down [[x y] button state]
+ (defn mouse-down [[x y] button state] state)
 ;;   (update-in state [:moobs] add-moob))
 
 (defn key-press [key state]
@@ -251,16 +330,6 @@
    (= key :escape) (do (app/fullscreen! (not (state :fullscreen)))
                        (update-in state [:fullscreen] not))
    :else state))
-
-(defn merge-ranges [s win]
-  (let [pos (map math/abs s)
-        lows (take 10 (drop 2 pos))
-        mids (take 200 (drop 12 pos))
-        highs (take 500 (drop 212 pos))
-        ;; mids (take 70 (drop 12 pos))
-        ;; highs (take 200 (drop 82 pos))
-        sums (map #(* %2 (apply + %1)) [lows mids highs] [0.009 0.005 0.01])]
-    (doall sums)))
 
 (defn update [[dt t] state]
   (let [progress (/ (state :level) (state :threshold))
@@ -313,15 +382,30 @@
   ;; (apply rotate (apply vec4 (cons 0 (state :normal))))
   ;; (apply rotate (cons (state :rotation) (state :orientation)))
 
-  (draw-triangle-fan
-   (let [bands (count (state :bins))]
-     (color 0.9 0.5 0.3)
-     (vertex 0 0 0)
-     (doall (map #(vertex %1 (* 10 %2) 0) (range bands) (state :bins)))
-     (vertex (dec bands) 0 0)))
-   ;; (doseq [index (range (count (state :bins)))
-   ;;         freq (state :bins)]
-   ;;   (vertex (debug index) (debug (* 10 freq)) 0)))
+  (let [[lo mid hi] (state :bins)
+        [w h] (app/size)]
+    (with-program (state :shader)
+;;      (uniform :dim w h)
+      (uniform :timeline t)
+      (uniform :lo lo)
+      (uniform :mid mid)
+      (uniform :hi hi)
+      (uniform :lopos (* (math/cos t) 0.1) (* (math/sin t) 0.1) 0)
+      (uniform :midpos (* (math/cos t) 0.2) (* (math/sin t) 0.2) 0)
+      (uniform :hipos (* (math/cos t) 0.3) (* (math/sin t) 0.3) 0)
+      (draw-quads
+       (vertex -30 -30 0)
+       (vertex -30 30 0)
+       (vertex 30 30 0)
+       (vertex 30 -30 0))))
+      
+
+      (draw-triangle-fan
+       (let [bands (count (state :bins))]
+         (color 0.9 0.5 0.3)
+         (vertex 0 0 0)
+         (doall (map #(vertex %1 (* 10 %2) 0) (range bands) (state :bins)))
+         (vertex (dec bands) 0 0)))
 
   ;; (draw-triangle-strip
   ;; ;; (draw-polygon
