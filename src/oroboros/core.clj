@@ -9,6 +9,7 @@
             [penumbra.data :as data]
             [penumbra.opengl.shader :as shader]
             [overtone.live :as ot]
+            [oroboros.orb :as orb]
             [oroboros.sound :as sound]))
 
 (def color-scale 1.0)
@@ -167,14 +168,14 @@
 
 (defn add-moob
   "add a random moob and shift one off the end if the moob limit is full"
-  [moobs]
-  (let [zero (random-moob)
-        final (last moobs)]
-    (if (< (count moobs) tones-max)
-      (cons zero moobs)
-      (let [shifted (cons zero (take (dec (count moobs)) moobs))
-            _ (ot/kill (last moobs))]
-        shifted))))
+  [moobs])
+  ;; (let [zero (random-moob)
+  ;;       final (last moobs)]
+  ;;   (if (< (count moobs) tones-max)
+  ;;     (cons zero moobs)
+  ;;     (let [shifted (cons zero (take (dec (count moobs)) moobs))
+  ;;           _ (ot/kill (last moobs))]
+  ;;       shifted))))
 
 (defn make-shader []
   (shader/compile-source
@@ -191,7 +192,7 @@
 
    :fragment
    "
-   //uniform vec2 dim;
+   uniform vec2 dim;
 
    uniform float lo;
    uniform float mid;
@@ -201,26 +202,26 @@
    uniform vec3 midpos;
    uniform vec3 hipos;
 
-   varying vec4 color;
+   uniform vec3 locolor;
+   uniform vec3 midcolor;
+   uniform vec3 hicolor;
 
    void main()
    {
      vec3 frag = vec3(gl_FragCoord.xy, 0);
-     vec3 llopos = (lopos + 1.0) * vec3(1800, 1000, 1);
-     vec3 mmidpos = (midpos + 1.0) * vec3(1800, 1000, 1);
-     vec3 hhipos = (hipos + 1.0) * vec3(1800, 1000, 1);
-     float loradius = (0.01 / lo) * sqrt(dot(frag - llopos, frag - llopos));
-     float midradius = (0.01 / mid) * sqrt(dot(frag - mmidpos, frag - mmidpos));
-     float hiradius = (0.01 / hi) * sqrt(dot(frag - hhipos, frag - hhipos));
+     vec3 rel = vec3(frag.x / dim.y, frag.y / dim.y, 0);
+     float loradius = (1.0 / lo) * sqrt(dot(rel - lopos, rel - lopos));
+     float midradius = (1.0 / mid) * sqrt(dot(rel - midpos, rel - midpos));
+     float hiradius = (1.0 / hi) * sqrt(dot(rel - hipos, rel - hipos));
      float portion = loradius + midradius + hiradius;
      float loportion = loradius / portion;
      float midportion = midradius / portion;
      float hiportion = hiradius / portion;
      float intensity = 1.0 / loradius + 1.0 / midradius + 1.0 / hiradius;
      intensity = clamp(intensity, 0.0, 0.7);
-     float blend = intensity * (loportion + midportion + hiportion);
+     vec3 blend = (locolor * loportion + midcolor * midportion + hicolor * hiportion) * intensity;
 
-     gl_FragColor = vec4(blend, blend, blend, 1);
+     gl_FragColor = vec4(blend, 1);
    } "
 
    ))
@@ -232,13 +233,19 @@
 
 (defn merge-ranges [s win]
   (let [pos (map math/abs s)
-        lows (take 10 (drop 2 pos))
-        mids (take 150 (drop 12 pos))
-        highs (take 350 (drop 162 pos))
-        ;; mids (take 70 (drop 12 pos))
-        ;; highs (take 200 (drop 82 pos))
-        sums (map #(* %2 (apply + %1)) [lows mids highs] [0.009 0.002 0.01])]
+        lows (take 16 (drop 2 pos))
+        mids (take 68 (drop 18 pos))
+        highs (take 426 (drop 86 pos))
+        ;; lows (take 10 (drop 2 pos))
+        ;; mids (take 150 (drop 12 pos))
+        ;; highs (take 350 (drop 162 pos))
+        sums (map #(* %2 (apply + %1)) [lows mids highs] [0.01 0.01 0.01])]
     (doall sums)))
+
+(defn orbiting [a b]
+  
+  (fn [orb]
+    (assoc orb :position (orb :position))))
 
 (defn reset
   "return the application to a baseline state"
@@ -250,10 +257,16 @@
                             [pick-color pick-vertex]
                             deviant-scales))
         color-transform (pick-color-transform transform-rate)
+        frequencies (ot/buffer-data sound/fft-in)
+        [l m h] (debug (merge-ranges frequencies bin-window))
+        lo  (orb/make-orb l [0.5 0 0] [0.1 0.5 0.9] (fn [orb] orb))
+        mid (orb/make-orb m [0 0.5 0] [0.9 0.1 0.5] (fn [orb] orb))
+        hi  (orb/make-orb h [0.2 0.2 0] [0.5 0.9 0.1] (fn [orb] orb))
         segments [(random-segment)]]
 ;;        [segments deviant color-transform] (make-segments segment-count initial-deviant transform)]
     (merge
      state
+
      {:moobs [];;(add-moob (state :moobs))
       :fullscreen false
       :segment-count segment-count
@@ -265,9 +278,12 @@
       :dtheta (pick-rotation 90)
       :level 0
       :shader (make-shader)
+      :orbs [lo mid hi]
       :threshold (unitoid threshold)
       :segments segments
-      :frequencies (ot/buffer-data sound/fft-in)}
+      :frequencies frequencies
+      :bins [l m h]}
+
      (segment-markers segments (add-segment (last segments) deviant) deviant color-transform))))
 
 (defn make-title
@@ -298,15 +314,6 @@
   (app/vsync! true)
   (set-largest-display-mode)
   (sound/input-frequencies)
-  ;; (defpipeline animal
-  ;;   :vertex {position  (float3 :vertex)
-  ;;            now_color (float3 :color)
-  ;;            normal    (normalize (float3 (* :normal-matrix :normal)))
-  ;;            :position (* :model-view-projection-matrix :vertex)}
-  ;;   :fragment (float4 1 1 1 1)
-
-  ;;   )
-
   (debug (shaders-supported?))
   (reset (merge state {:moobs []})))
 
@@ -318,7 +325,7 @@
 (defn reshape [[x y w h] state]
   ;; (viewport 1920 1080)
   ;; (frustum-view 60.0 (/ (double w) h) -10.0 10.0)
-  (orthon 20)
+  (orthon 1)
   (merge state {:width w :height h}))
 
  (defn mouse-down [[x y] button state] state)
@@ -335,12 +342,14 @@
   (let [progress (/ (state :level) (state :threshold))
         growing? (< (count (state :segments)) (state :segment-count))
         frequencies (ot/buffer-data sound/fft-in)
+        bins (merge-ranges frequencies bin-window)
         mid (merge state
          {:rotation (rem (+ (state :rotation) (* dt rotation-rate)) 360)
           :theta (math/plus (state :theta) (math/mult (state :dtheta) dt))
           :level (+ (state :level) dt)
           :frequencies frequencies
-          :bins (merge-ranges frequencies bin-window)
+          :bins bins
+          :orbs (map #(orb/advance-orb (orb/update-orb %1 %2)) (state :orbs) bins)
           :leading-segment (advance-segment
                             (state :first-segment)
                             (state :next-segment)
@@ -382,30 +391,39 @@
   ;; (apply rotate (apply vec4 (cons 0 (state :normal))))
   ;; (apply rotate (cons (state :rotation) (state :orientation)))
 
-  (let [[lo mid hi] (state :bins)
+  (let [[lo mid hi] (state :orbs)
         [w h] (app/size)]
     (with-program (state :shader)
-;;      (uniform :dim w h)
+      (uniform :dim (float w) (float h))
       (uniform :timeline t)
-      (uniform :lo lo)
-      (uniform :mid mid)
-      (uniform :hi hi)
-      (uniform :lopos (* (math/cos t) 0.1) (* (math/sin t) 0.1) 0)
-      (uniform :midpos (* (math/cos t) 0.2) (* (math/sin t) 0.2) 0)
-      (uniform :hipos (* (math/cos t) 0.3) (* (math/sin t) 0.3) 0)
+      (uniform :lo (lo :magnitude))
+      (uniform :mid (mid :magnitude))
+      (uniform :hi (hi :magnitude))
+      (apply uniform (cons :lopos (math/to-list (lo :position))))
+      (apply uniform (cons :midpos (math/to-list (mid :position))))
+      (apply uniform (cons :hipos (math/to-list (hi :position))))
+      (apply uniform (cons :locolor (math/to-list (lo :color))))
+      (apply uniform (cons :midcolor (math/to-list (mid :color))))
+      (apply uniform (cons :hicolor (math/to-list (hi :color))))
       (draw-quads
-       (vertex -30 -30 0)
-       (vertex -30 30 0)
-       (vertex 30 30 0)
-       (vertex 30 -30 0))))
+       (vertex -1 -1 0)
+       (vertex 1 -1 0)
+       (vertex 1 1 0)
+       (vertex -1 1 0))))
+
+      ;; (draw-quads
+      ;;  (vertex -30 -30 0)
+      ;;  (vertex -30 30 0)
+      ;;  (vertex 30 30 0)
+      ;;  (vertex 30 -30 0))))
       
 
-      (draw-triangle-fan
-       (let [bands (count (state :bins))]
-         (color 0.9 0.5 0.3)
-         (vertex 0 0 0)
-         (doall (map #(vertex %1 (* 10 %2) 0) (range bands) (state :bins)))
-         (vertex (dec bands) 0 0)))
+  ;; (draw-triangle-fan
+  ;;  (let [bands (count (state :bins))]
+  ;;    (color 0.9 0.5 0.3)
+  ;;    (vertex 0 0 0)
+  ;;    (doall (map #(vertex %1 (* 10 %2) 0) (range bands) (state :bins)))
+  ;;    (vertex (dec bands) 0 0)))
 
   ;; (draw-triangle-strip
   ;; ;; (draw-polygon
