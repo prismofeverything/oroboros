@@ -7,9 +7,11 @@
 
 (def fft-window 1024)
 (def fft-in (buffer fft-window))
+(def in-channel 1)
 
 (definst input-frequencies []
-  (fft fft-in (in 8)))
+  (fft fft-in (sound-in in-channel)))
+  ;; (fft fft-in (in 8)))
 
 ;; (def a (buffer 2048))
 ;; (def b (buffer 2048))

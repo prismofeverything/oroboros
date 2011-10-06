@@ -22,14 +22,21 @@
 (def transform-rate 0.1)
 (def identity-rate 0.01)
 (def rotation-rate 10)
-(def wobble-rate 0.1)
+(def wobble-rate 0.2)
 (def homeward 0.05)
-(def fft-scale (/ 1.0 sound/fft-window))
-(def fft-index (range -1 1 (* 2 fft-scale)))
 (def bin-window 512)
 
 (def zero (math/matrix [0 0 0]))
 (def iii (math/identity-matrix 3))
+
+(def fft-window 1024)
+(def fft-in (ot/buffer fft-window))
+(def fft-scale (/ 1.0 fft-window))
+(def fft-index (range -1 1 (* 2 fft-scale)))
+(def in-channel 0)
+
+(ot/definst input-frequencies []
+  (ot/fft fft-in (ot/sound-in in-channel)))
 
 (defn magnitude [v]
   (math/sqrt (math/sum-of-squares v)))
@@ -212,9 +219,9 @@
    {
      vec3 frag = vec3(gl_FragCoord.xy, 0);
      vec3 rel = vec3((frag.x / dim.y) - 0.5, ((dim.y - frag.y) / dim.y) - 0.5, 0) * 2.0;
-     float loradius = 0.4 * sqrt((210.0 / lo) * dot(rel - lopos, rel - lopos));
-     float midradius = 0.4 * sqrt((210.0 / mid) * dot(rel - midpos, rel - midpos));
-     float hiradius = 0.4 * sqrt((210.0 / hi) * dot(rel - hipos, rel - hipos));
+     float loradius = 0.2 * sqrt((510.0 / lo) * dot(rel - lopos, rel - lopos));
+     float midradius = 0.2 * sqrt((510.0 / mid) * dot(rel - midpos, rel - midpos));
+     float hiradius = 0.2 * sqrt((510.0 / hi) * dot(rel - hipos, rel - hipos));
      float portion = loradius + midradius + hiradius;
      float loportion = loradius / portion;
      float midportion = midradius / portion;
@@ -259,7 +266,7 @@
                             [pick-color pick-vertex]
                             deviant-scales))
         color-transform (pick-color-transform transform-rate)
-        frequencies (ot/buffer-data sound/fft-in)
+        frequencies (ot/buffer-data fft-in)
         [l m h] (debug (merge-ranges frequencies bin-window))
         lo  (orb/make-orb l [0 0 0] [0.1 0.5 0.9] (fn [orb] orb))
         mid (orb/make-orb m [0.5 0.5 0] [0.9 0.1 0.5] (fn [orb] orb))
@@ -315,7 +322,7 @@
   (app/title! (make-title))
   (app/vsync! true)
   (set-largest-display-mode)
-  (sound/input-frequencies)
+  (input-frequencies)
   (debug (shaders-supported?))
   (reset (merge state {:moobs []})))
 
@@ -343,7 +350,7 @@
 (defn update [[dt t] state]
   (let [progress (/ (state :level) (state :threshold))
         growing? (< (count (state :segments)) (state :segment-count))
-        frequencies (ot/buffer-data sound/fft-in)
+        frequencies (ot/buffer-data fft-in)
         bins (merge-ranges frequencies bin-window)
         leading (advance-segment
                  (state :first-segment)
@@ -355,9 +362,9 @@
                     (state :previous-segment)
                     (state :last-segment)
                     progress))
+        lopos (map * (leading :vertex) (trailing :vertex) [0.01 0.01 0.001])
         midpos (map * (leading :vertex) [0.1 0.1 0.01])
         hipos (map * (trailing :vertex) [0.1 0.1 0.01])
-        lopos (map * midpos hipos)
         straight (/ 0.02 (reduce + 0 bins))
         inverse (* 0.3 (reduce + 0 bins))
         wobble (* 0.5 (+ 1 (math/sin (* t wobble-rate))))
