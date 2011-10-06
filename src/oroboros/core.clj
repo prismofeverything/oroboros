@@ -294,8 +294,8 @@
   ;; (apply translate (math/minus (vec3 0 0 0) ((state :leading-segment) :vertex)))
   ;; (apply rotate (apply vec4 (cons 0 (state :normal))))
   ;; (apply rotate (cons (state :rotation) (state :orientation)))
-  (draw-triangle-strip
-   ;; (do-segment (segment (state :center-color) zero))
+  (draw-polygon
+   (do-segment (segment (state :center-color) zero))
    (do-segment (state :trailing-segment))
    (doall (map do-segment (reverse (state :segments))))
    (do-segment (state :leading-segment)))
