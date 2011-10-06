@@ -17,11 +17,12 @@
 (def deviant-scales [color-scale vertex-scale])
 (def transform-scale 0.1)
 (def closing-factor 0.2)
-(def threshold 0.02)
+(def threshold 0.2)
 (def tones-max 5)
 (def transform-rate 0.1)
 (def identity-rate 0.01)
 (def rotation-rate 10)
+(def wobble-rate 0.1)
 (def homeward 0.05)
 (def fft-scale (/ 1.0 sound/fft-window))
 (def fft-index (range -1 1 (* 2 fft-scale)))
@@ -40,7 +41,8 @@
   {:color c :vertex v})
 
 (defn pick-segment-count []
-  (* 10 (+ (rand-int 42) 9)))
+  (* 1 (+ (rand-int 42) 9)))
+  ;; (* 10 (+ (rand-int 42) 9)))
 
 (defn unitoid [scale]
   (* scale (rand)))
@@ -209,16 +211,16 @@
    void main()
    {
      vec3 frag = vec3(gl_FragCoord.xy, 0);
-     vec3 rel = vec3(frag.x / dim.y, frag.y / dim.y, 0);
-     float loradius = (1.0 / lo) * sqrt(dot(rel - lopos, rel - lopos));
-     float midradius = (1.0 / mid) * sqrt(dot(rel - midpos, rel - midpos));
-     float hiradius = (1.0 / hi) * sqrt(dot(rel - hipos, rel - hipos));
+     vec3 rel = vec3((frag.x / dim.y) - 0.5, ((dim.y - frag.y) / dim.y) - 0.5, 0) * 2.0;
+     float loradius = 0.4 * sqrt((210.0 / lo) * dot(rel - lopos, rel - lopos));
+     float midradius = 0.4 * sqrt((210.0 / mid) * dot(rel - midpos, rel - midpos));
+     float hiradius = 0.4 * sqrt((210.0 / hi) * dot(rel - hipos, rel - hipos));
      float portion = loradius + midradius + hiradius;
      float loportion = loradius / portion;
      float midportion = midradius / portion;
      float hiportion = hiradius / portion;
      float intensity = 1.0 / loradius + 1.0 / midradius + 1.0 / hiradius;
-     intensity = clamp(intensity, 0.0, 0.7);
+     intensity = clamp(intensity, 0.0, 0.9);
      vec3 blend = (locolor * loportion + midcolor * midportion + hicolor * hiportion) * intensity;
 
      gl_FragColor = vec4(blend, 1);
@@ -259,9 +261,9 @@
         color-transform (pick-color-transform transform-rate)
         frequencies (ot/buffer-data sound/fft-in)
         [l m h] (debug (merge-ranges frequencies bin-window))
-        lo  (orb/make-orb l [0.5 0 0] [0.1 0.5 0.9] (fn [orb] orb))
-        mid (orb/make-orb m [0 0.5 0] [0.9 0.1 0.5] (fn [orb] orb))
-        hi  (orb/make-orb h [0.2 0.2 0] [0.5 0.9 0.1] (fn [orb] orb))
+        lo  (orb/make-orb l [0 0 0] [0.1 0.5 0.9] (fn [orb] orb))
+        mid (orb/make-orb m [0.5 0.5 0] [0.9 0.1 0.5] (fn [orb] orb))
+        hi  (orb/make-orb h [1 1 0] [0.5 0.9 0.1] (fn [orb] orb))
         segments [(random-segment)]]
 ;;        [segments deviant color-transform] (make-segments segment-count initial-deviant transform)]
     (merge
@@ -279,7 +281,7 @@
       :level 0
       :shader (make-shader)
       :orbs [lo mid hi]
-      :threshold (unitoid threshold)
+      :threshold threshold ;; (unitoid threshold)
       :segments segments
       :frequencies frequencies
       :bins [l m h]}
@@ -343,23 +345,36 @@
         growing? (< (count (state :segments)) (state :segment-count))
         frequencies (ot/buffer-data sound/fft-in)
         bins (merge-ranges frequencies bin-window)
+        leading (advance-segment
+                 (state :first-segment)
+                 (state :next-segment)
+                 progress)
+        trailing (if growing?
+                   (state :previous-segment)
+                   (advance-segment
+                    (state :previous-segment)
+                    (state :last-segment)
+                    progress))
+        midpos (map * (leading :vertex) [0.1 0.1 0.01])
+        hipos (map * (trailing :vertex) [0.1 0.1 0.01])
+        lopos (map * midpos hipos)
+        straight (/ 0.02 (reduce + 0 bins))
+        inverse (* 0.3 (reduce + 0 bins))
+        wobble (* 0.5 (+ 1 (math/sin (* t wobble-rate))))
+        threshold (mix straight inverse wobble)
         mid (merge state
          {:rotation (rem (+ (state :rotation) (* dt rotation-rate)) 360)
           :theta (math/plus (state :theta) (math/mult (state :dtheta) dt))
           :level (+ (state :level) dt)
           :frequencies frequencies
+          :lopos lopos
+          :midpos midpos
+          :hipos hipos
           :bins bins
+          :threshold threshold
           :orbs (map #(orb/advance-orb (orb/update-orb %1 %2)) (state :orbs) bins)
-          :leading-segment (advance-segment
-                            (state :first-segment)
-                            (state :next-segment)
-                            progress)
-          :trailing-segment (if growing?
-                              (state :previous-segment)
-                              (advance-segment
-                               (state :previous-segment)
-                               (state :last-segment)
-                               progress))})
+          :leading-segment leading 
+          :trailing-segment trailing})
         lead (-> mid :leading-segment :vertex)
         head (-> mid :first-segment :vertex)
         orientation (normalize (math/minus lead head))
@@ -399,9 +414,12 @@
       (uniform :lo (lo :magnitude))
       (uniform :mid (mid :magnitude))
       (uniform :hi (hi :magnitude))
-      (apply uniform (cons :lopos (math/to-list (lo :position))))
-      (apply uniform (cons :midpos (math/to-list (mid :position))))
-      (apply uniform (cons :hipos (math/to-list (hi :position))))
+      (apply uniform (cons :lopos (state :lopos)))
+      (apply uniform (cons :midpos (state :midpos)))
+      (apply uniform (cons :hipos (state :hipos)))
+      ;; (apply uniform (cons :lopos (math/to-list (lo :position))))
+      ;; (apply uniform (cons :midpos (math/to-list (mid :position))))
+      ;; (apply uniform (cons :hipos (math/to-list (hi :position))))
       (apply uniform (cons :locolor (math/to-list (lo :color))))
       (apply uniform (cons :midcolor (math/to-list (mid :color))))
       (apply uniform (cons :hicolor (math/to-list (hi :color))))
