@@ -3,9 +3,9 @@
   (:use oroboros.debug)
   (:use [clojure.contrib.seq-utils :only [rand-elt]])
   (:require [incanter.core :as math]
-            [penumbra.app :as app]
-            [overtone.live :as ot]
-            [oroboros.sound :as sound]))
+            [penumbra.app :as app]))
+;;            [overtone.live :as ot]
+;;            [oroboros.sound :as sound]))
 
 (def color-scale 1.0)
 (def vertex-scale 1.0)
@@ -156,19 +156,19 @@
    [[(random-segment)] deviant transform]
    (range (dec n))))
 
-(defn random-moob []
-  (sound/moob (+ 60 (* (rand) 811))))
+;; (defn random-moob []
+;;   (sound/moob (+ 60 (* (rand) 811))))
 
-(defn add-moob
-  "add a random moob and shift one off the end if the moob limit is full"
-  [moobs]
-  (let [zero (random-moob)
-        final (last moobs)]
-    (if (< (count moobs) tones-max)
-      (cons zero moobs)
-      (let [shifted (cons zero (take (dec (count moobs)) moobs))
-            _ (ot/kill (last moobs))]
-        shifted))))
+;; (defn add-moob
+;;   "add a random moob and shift one off the end if the moob limit is full"
+;;   [moobs]
+;;   (let [zero (random-moob)
+;;         final (last moobs)]
+;;     (if (< (count moobs) tones-max)
+;;       (cons zero moobs)
+;;       (let [shifted (cons zero (take (dec (count moobs)) moobs))
+;;             _ (ot/kill (last moobs))]
+;;         shifted))))
 
 (defn reset
   "return the application to a baseline state"
@@ -184,7 +184,7 @@
 ;;        [segments deviant color-transform] (make-segments segment-count initial-deviant transform)]
     (merge
      state
-     {:moobs (add-moob (state :moobs))
+     {;; :moobs (add-moob (state :moobs))
       :fullscreen false
       :segment-count segment-count
       :rotation 0
@@ -225,7 +225,7 @@
   (app/title! (make-title))
   (app/vsync! true)
   (set-largest-display-mode)
-  (reset (merge state {:moobs []})))
+  (reset state)) ;; (merge state {:moobs []})))
 
 (defn orthon
   "set the perspective to a box with all n dimensions"
@@ -239,7 +239,8 @@
   (merge state {:width w :height h}))
 
 (defn mouse-down [[x y] button state]
-  (update-in state [:moobs] add-moob))
+  state)
+  ;; (update-in state [:moobs] add-moob))
 
 (defn key-press [key state]
   (cond
@@ -302,7 +303,7 @@
   (app/repaint!))
 
 (defn close [state]
-  (ot/stop)
+  ;; (ot/stop)
   state)
 
 (defn start []
