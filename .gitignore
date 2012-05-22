@@ -4,5 +4,6 @@ pom.xml
 /classes/
 /checkouts/
 /native/
+/target
 .lein-failures
 .lein-deps-sum
