@@ -1,7 +1,6 @@
 (ns oroboros.core
   (:use [penumbra opengl])
   (:use oroboros.debug)
-  (:use [clojure.contrib.seq-utils :only [rand-elt]])
   (:use oroboros.segment)
   (:require [incanter.core :as math]
             [penumbra.app :as app]))
@@ -115,7 +114,7 @@
   []
   (let [parts ["or" "ob" "or" "os" "OR" "OB" "OR" "OS"]
         num (+ (rand-int 20) 10)]
-    (apply str (map (fn [_] (rand-elt parts)) (range num)))))
+    (apply str (map (fn [_] (rand-nth parts)) (range num)))))
 
 (defn find-largest-display-mode
   "run through all of the system display modes and find the one with the greatest area"
