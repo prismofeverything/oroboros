@@ -10,7 +10,7 @@
 (def app (atom nil))
 
 (def color-scale 1.0)
-(def vertex-scale 1.0)
+(def vertex-scale 1.8)
 (def deviant-scales [color-scale vertex-scale])
 (def closing-factor 0.2)
 (def threshold 0.02)
