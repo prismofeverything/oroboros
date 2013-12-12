@@ -167,8 +167,10 @@
 (defn toggle-fullscreen!
   [state]
   (app/fullscreen! (not (state :fullscreen)))
-  (println (app/size))
-  (update-in state [:fullscreen] not))
+  (let [[w h] (app/size)
+        state (reshape [0 0 w h] state)]
+    (println "fullscreen" w h)
+    (update-in state [:fullscreen] not)))
 
 (defn key-press
   [key state]

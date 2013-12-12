@@ -4,6 +4,6 @@
                  [clj-glob "1.0.0"]
                  [overtone "0.8.1"]
                  [incanter "1.3.0"]
-                 [prismofeverything/penumbra "0.6.11"]]
+                 [prismofeverything/penumbra "0.6.12"]]
   :main oroboros.core)
 
