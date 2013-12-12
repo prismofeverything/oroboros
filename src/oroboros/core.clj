@@ -140,6 +140,8 @@
   [state]
   (app/title! (make-title))
   (app/vsync! true)
+  (doseq [mode (app/display-modes)]
+    (println mode))
   (set-largest-display-mode)
   (reset state)) ;; (merge state {:moobs []})))
 
