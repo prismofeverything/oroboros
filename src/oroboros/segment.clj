@@ -64,8 +64,9 @@
 (defn advance-segment
   "mix between one segment and the next based on the blend (between 0 and 1)"
   [a b blend]
-  (segment (mix (a :color) (b :color) blend)
-           (mix (a :vertex) (b :vertex) blend)))
+  (segment 
+   (mix (a :color) (b :color) blend)
+   (mix (a :vertex) (b :vertex) blend)))
 
 (defn deviate
   "given the epsilon, deviate the current vector in an arbitrary direction"
@@ -76,17 +77,20 @@
 (defn deviate-segment
   "deviate the given segment by a certain proportion"
   [seg scales transform]
-  (segment (math/mult 0.5 (math/plus 1 (math/mmult transform (math/minus (math/mult 2 (seg :color)) 1))))
-           (deviate (seg :vertex) (last scales))))
+  (segment 
+   (math/mult 0.5 (math/plus 1 (math/mmult transform (math/minus (math/mult 2 (seg :color)) 1))))
+   (deviate (seg :vertex) (last scales))))
 
 (defn add-segment
   "modify the given segment by the deviant segment"
   [seg deviant]
-  (segment (mix (seg :color) (deviant :color) 0.1) ;; (deviant :color) ;; (seg :color) ;; (pick-color) ;; (add (seg :color) (deviant :color))
-           (mix (math/plus (seg :vertex) (deviant :vertex)) zero homeward)))
+  (segment 
+   (mix (seg :color) (deviant :color) 0.1) ;; (deviant :color) ;; (seg :color) ;; (pick-color) ;; (add (seg :color) (deviant :color))
+   (mix (math/plus (seg :vertex) (deviant :vertex)) zero homeward)))
 
 (defn mix-segments
   "mix the color and vertex of the two segments a and b according to the blend"
   [a b blend]
-  (segment (normalize (math/plus (math/mult (a :color) (- 1.0 blend)) (math/mult (b :color) blend)))
-           (math/plus (math/mult (a :vertex) (- 1.0 blend)) (math/mult (b :vertex) blend))))
+  (segment 
+   (normalize (math/plus (math/mult (a :color) (- 1.0 blend)) (math/mult (b :color) blend)))
+   (math/plus (math/mult (a :vertex) (- 1.0 blend)) (math/mult (b :vertex) blend))))

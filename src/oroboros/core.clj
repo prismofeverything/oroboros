@@ -7,6 +7,8 @@
 ;;            [overtone.live :as ot]
 ;;            [oroboros.sound :as sound]))
 
+(def app (atom nil))
+
 (def color-scale 1.0)
 (def vertex-scale 1.0)
 (def deviant-scales [color-scale vertex-scale])
@@ -116,13 +118,16 @@
         num (+ (rand-int 20) 10)]
     (apply str (map (fn [_] (rand-nth parts)) (range num)))))
 
+(defn resolution-area
+  [mode]
+  (apply * (:resolution mode)))
+
 (defn find-largest-display-mode
   "run through all of the system display modes and find the one with the greatest area"
   []
-  (let [res (fn [mode] (apply * (mode :resolution)))]
-    (reduce #(if (> (res %1) (res %2)) %1 %2)
-            {:resolution [0 0]}
-            (app/display-modes))))
+  (or 
+   (last (sort-by resolution-area (app/display-modes))) 
+   {:resolution [0 0]}))
 
 (defn set-largest-display-mode
   "find the largest display mode and set the resolution to that"
@@ -143,24 +148,37 @@
   [n]
   (ortho-view (- n) n (- n) n (- n) n))
 
-(defn reshape [[x y w h] state]
+(defn reshape 
+  [[x y w h] state]
   ;; (viewport 1920 1080)
   ;; (frustum-view 60.0 (/ (double w) h) -10.0 10.0)
+  (println x y w h)
   (orthon 20)
-  (merge state {:width w :height h}))
+  (merge 
+   state 
+   {:width w 
+    :height h}))
 
-(defn mouse-down [[x y] button state]
+(defn mouse-down 
+  [[x y] button state]
   state)
   ;; (update-in state [:moobs] add-moob))
 
-(defn key-press [key state]
+(defn toggle-fullscreen!
+  [state]
+  (app/fullscreen! (not (state :fullscreen)))
+  (println (app/size))
+  (update-in state [:fullscreen] not))
+
+(defn key-press
+  [key state]
   (cond
    (= key " ") (reset state)
-   (= key :escape) (do (app/fullscreen! (not (state :fullscreen)))
-                       (update-in state [:fullscreen] not))
+   (= key :escape) (toggle-fullscreen! state)
    :else state))
 
-(defn update [[dt t] state]
+(defn update
+  [[dt t] state]
   (let [progress (/ (state :level) (state :threshold))
         growing? (< (count (state :segments)) (state :segment-count))
         mid (merge state
@@ -196,11 +214,13 @@
                                 (trans :color-transform))))
       trans)))
 
-(defn do-segment [segment]
+(defn do-segment
+  [segment]
   (apply color (segment :color))
   (apply vertex (segment :vertex)))
 
-(defn display [[dt t] state]
+(defn display
+  [[dt t] state]
   ;; (apply rotate (state :theta))
   (apply rotate (cons (state :rotation) (state :rotation-axis)))
   ;; (apply translate (math/minus (vec3 0 0 0) ((state :leading-segment) :vertex)))
@@ -213,17 +233,25 @@
    (do-segment (state :leading-segment)))
   (app/repaint!))
 
-(defn close [state]
+(defn close
+  [state]
   ;; (ot/stop)
   state)
 
-(defn start []
-  (app/start
-   {:init init
-    :reshape reshape
-    :mouse-down mouse-down
-    :key-press key-press
-    :update update
-    :display display
-    :close close}
-   {}))
+(defn start
+  []
+  (reset! 
+   app
+   (app/start
+    {:init init
+     :reshape reshape
+     :mouse-down mouse-down
+     :key-press key-press
+     :update update
+     :display display
+     :close close}
+    {})))
+
+(defn -main
+  []
+  (start))
