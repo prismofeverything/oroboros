@@ -178,7 +178,8 @@
   [key state]
   (cond
    (= key " ") (reset state)
-   (= key :escape) (toggle-fullscreen! state)
+   ;; (= key :escape) (toggle-fullscreen! state)
+   (= key "f") (toggle-fullscreen! state)
    :else state))
 
 (defn update
